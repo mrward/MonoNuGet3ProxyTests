@@ -46,9 +46,10 @@ namespace MonoNuGet3ProxyTests
 				exceptionThrown = ex;
 			}
 
-			var httpEx = exceptionThrown as HttpRequestException;
-			var webException = exceptionThrown?.InnerException as WebException;
-			var response = webException?.Response as HttpWebResponse;
+			var fatalProtocolEx = exceptionThrown as FatalProtocolException;
+			var httpEx = fatalProtocolEx.InnerException as HttpRequestException;
+			var webException = httpEx.InnerException as WebException;
+			var response = webException.Response as HttpWebResponse;
 
 			Assert.IsNotNull (exceptionThrown);
 			Assert.AreEqual (HttpStatusCode.ProxyAuthenticationRequired, response.StatusCode);
