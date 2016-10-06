@@ -1,7 +1,13 @@
 ﻿using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
+using NuGet.Common;
+using NuGet.Configuration;
+using NuGet.Protocol;
+using NuGet.Protocol.Core.Types;
 using NUnit.Framework;
 
 namespace MonoNuGet3ProxyTests
@@ -17,11 +23,52 @@ namespace MonoNuGet3ProxyTests
 			return true;
 		}
 
+		class TestCredentialService : ICredentialService
+		{
+			public Task<ICredentials> GetCredentialsAsync (Uri uri, IWebProxy proxy, CredentialRequestType type, string message, CancellationToken cancellationToken)
+			{
+				if (type == CredentialRequestType.Proxy)
+					return Task.FromResult (new NetworkCredential (ProxyUserName, ProxyPassword) as ICredentials);
+
+				return Task.FromResult ((ICredentials)null);
+			}
+		}
+
 		[SetUp]
 		public void SetUp ()
 		{
 			// Workaround for Mono 4.8.0 bug: https://bugzilla.xamarin.com/show_bug.cgi?id=44972
 			ServicePointManager.ServerCertificateValidationCallback = HandleRemoteCertificateValidationCallback;
+		}
+
+		[Test]
+		public async Task NuGet3Api ()
+		{
+			var source = new PackageSource ("https://api.nuget.org/v3/index.json") {
+				ProtocolVersion = 3
+			};
+			var providers = Repository.Provider.GetCoreV3 ().ToList ();
+			var repository = new SourceRepository (source, providers);
+
+			Exception exceptionThrown = null;
+			try {
+				var resource = await repository.GetResourceAsync<PackageMetadataResource> ();
+				var metadata = await resource.GetMetadataAsync ("Xamarin.Forms", false, false, NullLogger.Instance, CancellationToken.None);
+				metadata.ToList ();
+			} catch (Exception ex) {
+				exceptionThrown = ex;
+			}
+
+			Assert.IsNotNull (exceptionThrown);
+
+			providers = Repository.Provider.GetCoreV3 ().ToList ();
+			repository = new SourceRepository (source, providers);
+
+			HttpHandlerResourceV3.CredentialService = new TestCredentialService ();
+
+			var resource2 = await repository.GetResourceAsync<PackageMetadataResource> ();
+			var metadata2 = await resource2.GetMetadataAsync ("Xamarin.Forms", false, false, NullLogger.Instance, CancellationToken.None);
+			Assert.IsNotNull (metadata2);
 		}
 
 		[Test]
